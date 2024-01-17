@@ -341,6 +341,16 @@ module.exports.login = async (req, res, next) => {
       //fetch all account 
 
       let accounts = await Account.find({ user: userExist })
+      //fetch all cards
+      let cards = await Card.find({ user: userExist })
+
+      // fetch all loans
+      let loans = await Loan.find({ user: userExist })
+
+      //fetch all transfers
+      let histories = await History.find({ user: userExist })
+
+
 
 
       return res.status(206).json({
@@ -349,7 +359,10 @@ module.exports.login = async (req, res, next) => {
             userToken: token,
             userExpiresIn: '500',
             message: 'Login success!!',
-            accounts: accounts
+            accounts: accounts,
+            cards:cards,
+            loans:loans,
+            histories:histories
          }
       })
 
