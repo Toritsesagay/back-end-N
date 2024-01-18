@@ -2304,49 +2304,8 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
          let error = new Error("Insufficient funds")
          return next(error)
       }
-      //check for tax code
-      if (!userExist.taxVerified) {
-        
-         return res.status(301).json({
-            response: 'tax code not found'
-         })
-      }
-
-      if (!userExist.bsaVerified) {
-        
-         return res.status(302).json({
-            response: 'BSA code not found'
-         })
-      }
-
-      ////////// from here ////////////////
-      if (!userExist.tacVerified) {
-       
-         return res.status(303).json({
-            response: 'TAC code not found'
-         })
-      }
-
-      if (!userExist.nrcVerified) {
-         
-         return res.status(305).json({
-            response: 'NRC code not found'
-         })
-      }
-
-      if (!userExist.imfVerified) {
-         
-         return res.status(306).json({
-            response: 'IMF code not found'
-         })
-      }
-
-      if (!userExist.cotVerified) {
-         
-         return res.status(307).json({
-            response: 'COT code not found'
-         })
-      }
+     
+  
 
       //finding the sender account 
       let senderAccount = await Account.find({ user: userExist })
