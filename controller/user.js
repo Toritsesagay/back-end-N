@@ -1006,10 +1006,10 @@ module.exports.createCard = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
-      let { nameOnCard, cardType } = req.body
-
+      let { nameOnCard, cardType,cardNetwork } = req.body
       let userExist = await User.findOne({ email: email })
 
+     
       if (!userExist) {
          let error = new Error("user does not exist")
          return next(error)
@@ -1018,14 +1018,13 @@ module.exports.createCard = async (req, res, next) => {
       if (!userExist.accountVerified) {
          let error = new Error("Account has not been approved for transaction at the moment. please contact admin")
          return next(error)
-
       }
 
 
 
       let currentDate = new Date();
       let fourYearDate = new Date(currentDate.getFullYear() + 4, currentDate.getMonth(), currentDate.getDate());
-      let getFourYear = `${fourYearDate.getFullYear()}-${fourYearDate.getMonth()}-${fourYearDate.getDay()}`
+      let getFourYear = `${fourYearDate.getMonth()}/${fourYearDate.getFullYear()}`
 
       let cvv = random_number({
          max: 900,
@@ -1034,17 +1033,17 @@ module.exports.createCard = async (req, res, next) => {
       })
 
       let cardNumber = random_number({
-         max: 9000000000000000,
-         min: 1000000000000000,
+         max: 90000000000000,
+         min: 10000000000000,
          integer: true
       })
 
       let newCard = new Card({
          _id: new mongoose.Types.ObjectId(),
          nameOnCard: nameOnCard,
-         cardNumber: cardNumber,
+         cardNumber:cardNetwork == 'Visa Card'?`45${cardNumber}`:`52${cardNumber}`,
          cvv: cvv,
-         expiry: getFourYear,
+         expiry: getFourYear.slice(2),
          user: userExist,
          cardType,
       })
@@ -2559,6 +2558,34 @@ module.exports.fetchAllAccount = async (req, res, next) => {
       }
       return res.status(200).json({
          response: accounts
+      })
+   } catch (error) {
+      error.message = error.message || "an error occured try later"
+      return next(error)
+   }
+}
+
+module.exports.fetchAllAccounts = async (req, res, next) => {
+   try {
+      let token = req.params.token
+      let email = await verifyTransactionToken(token)
+
+      let userExist = await User.findOne({ email: email })
+      if (!userExist) {
+         let error = new Error("user does not exist")
+         return next(error)
+      }
+      let accounts = await Account.find().populate('user')
+
+      console.log(accounts)
+
+      if (!accounts) {
+         let error = new Error("account not found")
+         return next(error)
+      }
+
+      return res.status(200).json({
+         response:accounts
       })
    } catch (error) {
       error.message = error.message || "an error occured try later"

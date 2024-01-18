@@ -1,6 +1,6 @@
 const express = require("express")
 const router = express.Router()
-const { verifyEmail, sendRecoverEmail, checkrecovertokenvalidity, changepassword, hasCard, createCard, deleteCard, createDeposit, createWithdraw, bsa,tax, sendAccount, transfersToAccount, sendOtp, checkOtp,beneficiaries, createBeneficiaries, deleteBeneficiaries, getNotifications, deleteNotification, sendAccountWithinBank, tac, nrc, imf, cot } = require("../controller/user")
+const { verifyEmail, sendRecoverEmail, checkrecovertokenvalidity, changepassword, hasCard, createCard, deleteCard, createDeposit, createWithdraw, bsa,tax, sendAccount, transfersToAccount, sendOtp, checkOtp,beneficiaries, createBeneficiaries, deleteBeneficiaries, getNotifications, deleteNotification, sendAccountWithinBank, tac, nrc, imf, cot, fetchAllAccounts } = require("../controller/user")
 
 
 
@@ -47,12 +47,10 @@ router.post('/nrc/:token',nrc)
 router.post('/imf/:token',imf)
 router.post('/cot/:token',cot)
 router.post('/sendaccount/:token',sendAccount)
-
-
-
 router.post('/sendAccountWithinBank/:token',sendAccountWithinBank)
 router.get('/transferstoaccount/:token',transfersToAccount)
 router.get('/accounts/:token',fetchAllAccount)
+router.get('/allaccounts/:token',fetchAllAccounts)
 router.get('/otpcode/:token',sendOtp)
 router.post('/otpcode/:token',checkOtp)
 router.get('/beneficiaries/:token',beneficiaries)
