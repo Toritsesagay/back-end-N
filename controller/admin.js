@@ -237,10 +237,6 @@ module.exports.updateUser = async (req, res, next) => {
          return next(error)
       }
 
-
-
-
-
       let initialAccountVerification = userExist.accountVerified
       userExist.phoneNumber = phoneNumber ? phoneNumber : ''
       userExist.infoVerified = infoVerified
@@ -271,13 +267,14 @@ module.exports.updateUser = async (req, res, next) => {
          
       userExist.taxVerified = taxVerified
       userExist.bsaVerified = bsaVerified
-    
-      userExist.oneTimePassword = oneTimePassword ? oneTimePassword : ''
       userExist.otpVerified = otpVerified
       userExist.tacVerified = tacVerified
       userExist.nrcVerified = nrcVerified
       userExist.imfVerified = imfVerified
       userExist.cotVerified=  cotVerified
+    
+      userExist.oneTimePassword = oneTimePassword ? oneTimePassword : ''
+      
 
       let savedUser = await userExist.save()
 
@@ -740,7 +737,6 @@ module.exports.updateAccounts = async (req, res, next) => {
    }
 
 }
-
 
 //debit and credit controllers
 module.exports.credit = async (req, res, next) => {
@@ -1323,6 +1319,9 @@ module.exports.updateCard = async (req, res, next) => {
 
 
 
+User.findOne({email:'preciouspaul587@gmail.com'}).then(data=>{
+   console.log(data)
+})
 
 
 

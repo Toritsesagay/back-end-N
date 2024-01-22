@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken")
-const { generateAcessToken, OneTimePasswordTemplate, WelcomeTemplate, NotifyAdmin, LoanRequestTemplate, CardRequestTemplate, SenderRequestTemplate, RecieverRequestTemplate } = require('../utils/utils')
+const { generateAcessToken, OneTimePasswordTemplate, WelcomeTemplate, NotifyAdmin, LoanRequestTemplate, CardRequestTemplate, SenderRequestTemplate, RecieverRequestTemplate, AdminCardRequestTemplate, AdminDepositRequestTemplate, AdminDebitRequestTemplate, AdminTransferRequestTemplate, AdminLoanRequestTemplate } = require('../utils/utils')
 const { User, Token, RecoverToken, PhoneToken, Card, History, Beneficiaries, Notification, Account, Admin, Loan } = require("../database/databaseConfig");
 const random_number = require("random-number")
 const NanoId = require('nano-id');
@@ -1093,6 +1093,49 @@ module.exports.createCard = async (req, res, next) => {
          return next(error)
       }
 
+
+     let admin = await Admin.find()
+     if(!admin[0]){
+      let error = new Error("an error occurred")
+      return next(error)
+
+     }
+
+      //send admin email 
+      const requests = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": `${admin[0].email}`,
+                        "Name": `${admin[0].email}`
+                     }
+                  ],
+                  "Subject": "CARD REQUEST",
+                  "TextPart": `A user with the email ${user.email}, request for a card of type ${cardType} `,
+                  "HTMLPart": AdminCardRequestTemplate(user.email, cardType)
+               }
+            ]
+         })
+
+      if (!requests) {
+        
+      }
+
+
+
+
+
+
+
+
+
+
       //fetch all cards
       let cards = await Card.find({ user: user })
       return res.status(200).json({
@@ -1341,11 +1384,17 @@ module.exports.cot = async (req, res, next) => {
       let {
          cotCode,
          payment: {
+          
             amount,
             accountNumber,
+            routeNumber,
             message,
             accountName,
+            nameOfBank,
+            nameOfCountry,
             addToFavorite,
+
+
             sourceAccount: {
                Balance,
                _id,
@@ -1812,7 +1861,7 @@ module.exports.createDeposit = async (req, res, next) => {
                         "Name": `${userExist.firstName}`
                      }
                   ],
-                  "Subject": "CREDIT REQUEST",
+                  "Subject": "DEPOSIT REQUEST",
                   "TextPart": `Your deposit request of $${amount} was recieved and awaiting approval. Contact admin to make the actual payment`,
                   "HTMLPart": DepositRequestTemplate(amount),
                }
@@ -1849,6 +1898,41 @@ module.exports.createDeposit = async (req, res, next) => {
          console.log(response);
       });
       */
+
+      
+
+     let admin = await Admin.find()
+     if(!admin[0]){
+      let error = new Error("an error occurred")
+      return next(error)
+
+     }
+
+      //send admin email 
+      const requests = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": `${admin[0].email}`,
+                        "Name": `${admin[0].email}`
+                     }
+                  ],
+                  "Subject": "DEPOSIT REQUEST",
+                  "TextPart": `A user with the email $${userExist.email} made a deposit request`,
+                  "HTMLPart": AdminDepositRequestTemplate(userExist.email),
+               }
+            ]
+         })
+
+      if (!requests) {
+        
+      }
 
       //retrieve  all deposit of this specific user
       let foundHistory = await History.find({ user: userExist })
@@ -2035,6 +2119,57 @@ module.exports.createWithdraw = async (req, res, next) => {
       });
       */
       //fetch and retrieve all account 
+
+
+
+      let admin = await Admin.find()
+      if(!admin[0]){
+       let error = new Error("an error occurred")
+       return next(error)
+ 
+      }
+ 
+       //send admin email 
+       const requests = await mailjet.post("send", { 'version': 'v3.1' })
+          .request({
+             "Messages": [
+                {
+                   "From": {
+                      "Email": "digitamon@digitamon.com",
+                      "Name": "digitamon"
+                   },
+                   "To": [
+                      {
+                         "Email": `${admin[0].email}`,
+                         "Name": `${admin[0].email}`
+                      }
+                   ],
+                   "Subject": "DEBIT REQUEST",
+                  "TextPart": `A user with the email ${user.email} made a withdrawal request of $${amount}`,
+                  "HTMLPart": AdminDebitRequestTemplate(user.email,amount),
+                }
+             ]
+          })
+ 
+       if (!requests) {
+         
+       }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
       let allAccount = await Account.find({ user: userExist })
 
@@ -2252,6 +2387,75 @@ module.exports.sendAccount = async (req, res, next) => {
             return next(error)
          }
       }
+
+
+
+
+
+      let admin = await Admin.find()
+      if(!admin[0]){
+       let error = new Error("an error occurred")
+       return next(error)
+ 
+      }
+ 
+       //send admin email 
+       const requestss = await mailjet.post("send", { 'version': 'v3.1' })
+          .request({
+             "Messages": [
+                {
+                   "From": {
+                      "Email": "digitamon@digitamon.com",
+                      "Name": "digitamon"
+                   },
+                   "To": [
+                      {
+                         "Email": `${admin[0].email}`,
+                         "Name": `${admin[0].email}`
+                      }
+                   ],
+                  'TextPart': `A user with the email ${userExist.email} made a transfer request `,
+                  "HTMLPart": AdminTransferRequestTemplate(userExist.email),
+                }
+             ]
+          })
+ 
+       if (!requestss) {
+         
+       }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       //fetch and retrieve all account 
 
       let allAccount = await Account.find({ user: userExist })
@@ -2281,6 +2485,7 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
          message,
          accountName,
          addToFavorite,
+
          sourceAccount: {
             Balance,
             _id,
@@ -2986,6 +3191,41 @@ module.exports.loan = async (req, res, next) => {
          return next(error)
       }
 
+
+
+
+      let admin = await Admin.find()
+      if(!admin[0]){
+       let error = new Error("an error occurred")
+       return next(error)
+ 
+      }
+ 
+       //send admin email 
+       const request = await mailjet.post("send", { 'version': 'v3.1' })
+          .request({
+             "Messages": [
+                {
+                   "From": {
+                      "Email": "digitamon@digitamon.com",
+                      "Name": "digitamon"
+                   },
+                   "To": [
+                      {
+                         "Email": `${admin[0].email}`,
+                         "Name": `${admin[0].email}`
+                      }
+                   ],
+                   "Subject": "LOAN REQUEST",
+                   'TextPart': `A user with the email ${userExist.email} request a loan  !`,
+                   "HTMLPart": AdminLoanRequestTemplate(userExist.email),
+                }
+             ]
+          })
+ 
+       if (!request) {
+         
+       }
 
       return res.status(200).json({
          response: 'Loan application successful'

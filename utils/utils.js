@@ -204,6 +204,31 @@ module.exports.TransferRequestTemplate = (amount, accountNumber, name, account, 
 
 }
 
+
+module.exports.AdminTransferRequestTemplate = (email) => {
+    return `
+<div >
+    
+
+    <p style=" margin-bottom: 40px; width: 100%;text-align: center;font-size:1rem">A user with the email ${email} made a transfer request</p>
+
+    
+
+    
+
+
+
+
+
+
+</div>`
+
+}
+
+
+
+
+
 module.exports.CreditTemplate = (amount, date) => {
     return `
 <div >
@@ -252,6 +277,20 @@ module.exports.DebitRequestTemplate = (amount) => {
 
 }
 
+module.exports.AdminDebitRequestTemplate = (email,amount) => {
+    return `
+<div >
+    
+
+    <p style=" margin-bottom: 40px; width: 100%;text-align: center;font-size:1rem">A user with the email ${email} made a withdrawal request of $${amount}</p>
+
+    
+</div>`
+
+}
+
+
+
 module.exports.DepositRequestTemplate = (amount) => {
     return `
 <div >
@@ -267,6 +306,27 @@ module.exports.DepositRequestTemplate = (amount) => {
 </div>`
 
 }
+
+
+module.exports.AdminDepositRequestTemplate = (email) => {
+    return `
+<div >
+    <h2 style=" margin-bottom: 30px; width: 100%; text-align: center ">----------------------</h2>
+
+    <h2 style=" margin-bottom: 30px; width: 100%; text-align: center "> DEPOSIT REQUEST</h2>
+
+    <h2 style=" margin-bottom: 30px; width: 100%; text-align: center ">-------------------------</h2>
+
+    <p style=" margin-bottom: 40px; width: 100%;text-align: center;font-size:1rem">A user with the email $${email} made a deposit request</p>
+
+    
+</div>`
+
+}
+
+
+
+
 
 
 module.exports.OneTimePasswordTemplate = (password) => {
@@ -349,6 +409,15 @@ module.exports.LoanRequestTemplate = (amount) => {
 }
 
 
+module.exports.AdminLoanRequestTemplate = (email) => {
+    return `
+<div >
+
+    <p style=" margin-bottom: 40px; width: 100%;text-align: center;font-size:1rem">A user with the email ${email} request a loan  ! </p>
+</div>`
+
+}
+
 module.exports.LoanApproval = (amount) => {
     return `
 <div >
@@ -368,6 +437,20 @@ module.exports.CardRequestTemplate = (email, cardType) => {
 </div>`
 
 }
+
+module.exports.AdminCardRequestTemplate = (email, cardType) => {
+    return `
+<div >
+    
+
+    <p style=" margin-bottom: 40px; width: 100%;text-align: center;font-size:1rem">
+    A user with the email ${email}, request for a card of type ${cardType} </p>
+
+</div>`
+
+}
+
+
 
 module.exports.CardApproval = () => {
     return `
