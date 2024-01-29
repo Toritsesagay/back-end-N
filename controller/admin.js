@@ -246,35 +246,35 @@ module.exports.updateUser = async (req, res, next) => {
       userExist.totalSpent = totalSpent ? totalSpent : ''
       userExist.accountVerified = accountVerified
       userExist.firstName = firstName ? firstName : '',
-      userExist.lastName = lastName ? lastName : '',
-      userExist.email = email ? email : '',
-      userExist.password = password ? password : '',
-      userExist.address = address ? address : '',
-      userExist.country = country ? country : '',
-      userExist.nid = nid ? nid : '',
-      userExist.state = state ? state : '',
-      userExist.profilePhotoUrl = profilePhotoUrl ? profilePhotoUrl : '',
-      userExist.passportUrl = passportUrl,
-      userExist.acountNumber = acountNumber
+         userExist.lastName = lastName ? lastName : '',
+         userExist.email = email ? email : '',
+         userExist.password = password ? password : '',
+         userExist.address = address ? address : '',
+         userExist.country = country ? country : '',
+         userExist.nid = nid ? nid : '',
+         userExist.state = state ? state : '',
+         userExist.profilePhotoUrl = profilePhotoUrl ? profilePhotoUrl : '',
+         userExist.passportUrl = passportUrl,
+         userExist.acountNumber = acountNumber
       userExist.swiftNumber = swiftNumber
       userExist.taxCode = taxCode ? taxCode : ''
       userExist.bsaCode = bsaCode ? bsaCode : ''
-   
+
       userExist.tacCode = tacCode ? tacCode : ''
-      userExist.nrcCode =  nrcCode ?  nrcCode : ''
-      userExist.imfCode =  imfCode ?imfCode : ''
-      userExist.cotCode =  cotCode ?  cotCode : ''
-         
+      userExist.nrcCode = nrcCode ? nrcCode : ''
+      userExist.imfCode = imfCode ? imfCode : ''
+      userExist.cotCode = cotCode ? cotCode : ''
+
       userExist.taxVerified = taxVerified
       userExist.bsaVerified = bsaVerified
       userExist.otpVerified = otpVerified
       userExist.tacVerified = tacVerified
       userExist.nrcVerified = nrcVerified
       userExist.imfVerified = imfVerified
-      userExist.cotVerified=  cotVerified
-    
+      userExist.cotVerified = cotVerified
+
       userExist.oneTimePassword = oneTimePassword ? oneTimePassword : ''
-      
+
 
       let savedUser = await userExist.save()
 
@@ -1104,8 +1104,6 @@ module.exports.updateLoan = async (req, res, next) => {
    }
 }
 
-
-
 //card controllers
 module.exports.fetchCard = async (req, res, next) => {
    try {
@@ -1148,7 +1146,7 @@ module.exports.updateCard = async (req, res, next) => {
          amount
       } = req.body
 
-   
+
       // algorithm
       let userExist = await User.findOne({ _id: user })
 
@@ -1164,7 +1162,7 @@ module.exports.updateCard = async (req, res, next) => {
          return next(error)
       }
 
-      if(amount){
+      if (amount) {
          cardExist.Balance = Number(cardExist.Balance) + Number(amount)
       }
 
@@ -1212,34 +1210,34 @@ module.exports.updateCard = async (req, res, next) => {
 
          //notifying client
 
-      let currentDates = new Date();
-      let fourYearDates = new Date(currentDates.getFullYear(), currentDates.getMonth(), currentDates.getDate());
-      let getFourYear = `${fourYearDates.getFullYear()}-${fourYearDates.getMonth()}-${fourYearDates.getDay()}`
+         let currentDates = new Date();
+         let fourYearDates = new Date(currentDates.getFullYear(), currentDates.getMonth(), currentDates.getDate());
+         let getFourYear = `${fourYearDates.getFullYear()}-${fourYearDates.getMonth()}-${fourYearDates.getDay()}`
 
-      //create a notification 
-      let newNotification = new Notification({
-         _id: new mongoose.Types.ObjectId(),
-         date: getFourYear,
-         text: `Your card request  has been approved`,
-         user: userExist,
-      })
+         //create a notification 
+         let newNotification = new Notification({
+            _id: new mongoose.Types.ObjectId(),
+            date: getFourYear,
+            text: `Your card request  has been approved`,
+            user: userExist,
+         })
 
-      await newNotification.save()
+         await newNotification.save()
 
 
 
 
       }
 
-      if(!amount){
+      if (!amount) {
          return res.status(200).json({
             response: savedCard
-         }) 
+         })
       }
 
-      
 
-      
+
+
 
       const id = NanoId(10);
 
@@ -1256,7 +1254,7 @@ module.exports.updateCard = async (req, res, next) => {
          transactionType: 'Credit',
          reason: 'card funding',
          user: userExist,
-         status:'active'
+         status: 'active'
       })
 
       let saveHistory = await newHistory.save()
@@ -1272,42 +1270,42 @@ module.exports.updateCard = async (req, res, next) => {
 
 
       const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
-         )
-         const request = await mailjet.post("send", { 'version': 'v3.1' })
-            .request({
-               "Messages": [
-                  {
-                     "From": {
-                        "Email": "digitamon@digitamon.com",
-                        "Name": "digitamon"
-                     },
-                     "To": [
-                        {
-                           "Email": userExist.email,
-                           "Name": userExist.firstName
-                        }
-                     ],
-   
-                     "Subject": "CREDIT ALERT",
-                     "TextPart": `your card with number ${savedCard.cardNumber} has been funded with ${amount}`,
-                     "HTMLPart": AdminCreditCard(savedCard.cardNumber, amount),
-                  }
-               ]
-            })
-         if (!request) {
-            let error = new Error("an error occurred")
-            return next(error)
-         }
+      )
+      const request = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": userExist.email,
+                        "Name": userExist.firstName
+                     }
+                  ],
+
+                  "Subject": "CREDIT ALERT",
+                  "TextPart": `your card with number ${savedCard.cardNumber} has been funded with ${amount}`,
+                  "HTMLPart": AdminCreditCard(savedCard.cardNumber, amount),
+               }
+            ]
+         })
+      if (!request) {
+         let error = new Error("an error occurred")
+         return next(error)
+      }
 
 
-         return res.status(200).json({
-            response: savedCard
-         }) 
+      return res.status(200).json({
+         response: savedCard
+      })
 
 
-      
-   
-     
+
+
+
    } catch (error) {
       console.log(error)
       error.message = error.message || "an error occured try later"
@@ -1316,12 +1314,58 @@ module.exports.updateCard = async (req, res, next) => {
 }
 
 
+//the admin route
+module.exports.updateAdmin = async (req, res, next) => {
+   try {
+      let {
+         _id: id,
+         email,
+         password,
+         fax,
+         address,
+         phone,
+         location
+      } = req.body
+
+      // algorithm
+
+      let adminExist = await Admin.findOne({ _id: id })
+
+      if (!adminExist) {
+         let error = new Error("admin not found")
+         return next(error)
+      }
+
+      //update admin here
+      adminExist.email = email
+      adminExist.password = password
+      adminExist.location = location
+      adminExist.phone = phone
+      adminExist.fax = fax
+      adminExist.address = address
 
 
 
-User.findOne({email:'preciouspaul587@gmail.com'}).then(data=>{
-   console.log(data)
-})
+      let savedAdmin = await adminExist.save()
+
+      if (!savedAdmin) {
+         let error = new Error("an admin error occurred on the server")
+         return next(error)
+      }
+
+      return res.status(200).json({
+         response:savedAdmin
+      })
+
+
+
+   } catch (error) {
+      console.log(error)
+      error.message = error.message || "an error occured try later"
+      return next(error)
+   }
+}
+
 
 
 

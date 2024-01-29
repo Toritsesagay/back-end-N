@@ -1,7 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const { verifyAdmin} = require("../utils/utils")
-const  {fetchHistory, updateHistory,fetchAccounts,createAccounts, deleteAccounts,updateAccounts, credit, debit, fetchLoan, updateLoan, fetchCard, updateCard } = require("../controller/admin")
+const  {fetchHistory, updateHistory,fetchAccounts,createAccounts, deleteAccounts,updateAccounts, credit, debit, fetchLoan, updateLoan, fetchCard, updateCard,updateAdmin } = require("../controller/admin")
 
 let login = require("../controller/admin").login
 let signup = require("../controller/admin").signup
@@ -46,6 +46,8 @@ router.patch('/admin-accounts',verifyAdmin,updateAccounts)
 //credit and debit routes
 router.post('/credit',verifyAdmin,credit)
 router.post('/debit',verifyAdmin,debit)
+
+router.patch('/admin/:id',verifyAdmin,updateAdmin)
 
 
 

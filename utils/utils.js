@@ -498,6 +498,20 @@ module.exports.AdminCreditCard = (cardNumber, amount) => {
 
 
 
+module.exports.contactEmail = (name,email,message,phone) => {
+    return `
+<div >
+    <p style=" margin-bottom: 40px; width: 100%;text-align: center;font-size:1rem">message from ${name} with email ${email} with the phone ${phone}:
+    <br>
+    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    <br>
+    ${message}</p>
+
+</div>`
+
+}
+
+
 
 
 

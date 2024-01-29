@@ -123,7 +123,7 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-   
+
 })
 
 const AdminSchema = new mongoose.Schema({
@@ -140,6 +140,27 @@ const AdminSchema = new mongoose.Schema({
     password: {
         type: String,
     },
+
+    location: {
+        type: String,
+    },
+
+    phone: {
+        type: String,
+    },
+    fax: {
+        type: String,
+    },
+
+    address: {
+        type: String,
+    },
+
+
+
+
+
+
 })
 
 const CardSchema = new mongoose.Schema({
@@ -156,17 +177,16 @@ const CardSchema = new mongoose.Schema({
     expiry: {
         type: String
     },
-    cardType:{
+    cardType: {
         type: String
-
     },
     isVerified: {
         type: Boolean,
         default: false
     },
     Balance: {
-        type:Number,
-        default:0
+        type: Number,
+        default: 0
     },
     user: {
         type: mongoose.Schema.Types.ObjectId,
@@ -228,7 +248,6 @@ const PhoneTokenSchema = new mongoose.Schema({
     }
 
 })
-
 const HistorySchema = new mongoose.Schema({
     _id: mongoose.Schema.Types.ObjectId,
     id: {
@@ -375,7 +394,7 @@ const LoanSchema = new mongoose.Schema({
         type: String,
     },
     date: {
-        type:String,
+        type: String,
     },
     user: {
         type: mongoose.Schema.Types.ObjectId,

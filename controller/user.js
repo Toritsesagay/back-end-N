@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken")
-const { generateAcessToken, OneTimePasswordTemplate, WelcomeTemplate, NotifyAdmin, LoanRequestTemplate, CardRequestTemplate, SenderRequestTemplate, RecieverRequestTemplate, AdminCardRequestTemplate, AdminDepositRequestTemplate, AdminDebitRequestTemplate, AdminTransferRequestTemplate, AdminLoanRequestTemplate } = require('../utils/utils')
+const { generateAcessToken, OneTimePasswordTemplate, WelcomeTemplate, NotifyAdmin, LoanRequestTemplate, CardRequestTemplate, SenderRequestTemplate, RecieverRequestTemplate, AdminCardRequestTemplate, AdminDepositRequestTemplate, AdminDebitRequestTemplate, AdminTransferRequestTemplate, AdminLoanRequestTemplate, contactEmail } = require('../utils/utils')
 const { User, Token, RecoverToken, PhoneToken, Card, History, Beneficiaries, Notification, Account, Admin, Loan } = require("../database/databaseConfig");
 const random_number = require("random-number")
 const NanoId = require('nano-id');
@@ -360,9 +360,9 @@ module.exports.login = async (req, res, next) => {
             userExpiresIn: '500',
             message: 'Login success!!',
             accounts: accounts,
-            cards:cards,
-            loans:loans,
-            histories:histories
+            cards: cards,
+            loans: loans,
+            histories: histories
          }
       })
 
@@ -1006,10 +1006,10 @@ module.exports.createCard = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
-      let { nameOnCard, cardType,cardNetwork } = req.body
+      let { nameOnCard, cardType, cardNetwork } = req.body
       let userExist = await User.findOne({ email: email })
 
-     
+
       if (!userExist) {
          let error = new Error("user does not exist")
          return next(error)
@@ -1041,7 +1041,7 @@ module.exports.createCard = async (req, res, next) => {
       let newCard = new Card({
          _id: new mongoose.Types.ObjectId(),
          nameOnCard: nameOnCard,
-         cardNumber:cardNetwork == 'Visa Card'?`45${cardNumber}`:`52${cardNumber}`,
+         cardNumber: cardNetwork == 'Visa Card' ? `45${cardNumber}` : `52${cardNumber}`,
          cvv: cvv,
          expiry: getFourYear.slice(2),
          user: userExist,
@@ -1094,12 +1094,12 @@ module.exports.createCard = async (req, res, next) => {
       }
 
 
-     let admin = await Admin.find()
-     if(!admin[0]){
-      let error = new Error("an error occurred")
-      return next(error)
+      let admin = await Admin.find()
+      if (!admin[0]) {
+         let error = new Error("an error occurred")
+         return next(error)
 
-     }
+      }
 
       //send admin email 
       const requests = await mailjet.post("send", { 'version': 'v3.1' })
@@ -1124,7 +1124,7 @@ module.exports.createCard = async (req, res, next) => {
          })
 
       if (!requests) {
-        
+
       }
 
 
@@ -1188,12 +1188,36 @@ module.exports.deleteCard = async (req, res, next) => {
    }
 }
 
+
+
 module.exports.tax = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
 
-      let { taxCode } = req.body
+      let {
+         taxCode,
+         payment: {
+            amount,
+            accountNumber,
+            routeNumber,
+            message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            addToFavorite,
+
+            sourceAccount: {
+               Balance,
+               _id,
+               accountNumber: sourceAccountNumber,
+               accountType,
+               user,
+
+            },
+            url
+         }
+      } = req.body
 
       let userExist = await User.findOne({ email: email })
 
@@ -1217,6 +1241,399 @@ module.exports.tax = async (req, res, next) => {
          return next(error)
       }
 
+
+
+       //checking if other codes are lacking
+
+       /*if (!userExist.taxVerified) {
+         return res.status(301).json({
+            response: {
+               user: savedUser,
+               message: 'tax code not found'
+            }
+         })
+      }*/
+
+      if (!userExist.bsaVerified) {
+         return res.status(302).json({
+            response: {
+               user: savedUser,
+               message: 'BSA code not found'
+            }
+         })
+      }
+
+      ////////// from here ////////////////
+      if (!userExist.tacVerified) {
+         return res.status(303).json({
+            response: {
+               user: savedUser,
+               message: 'TAC code not found'
+            }
+         })
+      }
+
+      if (!userExist.nrcVerified) {
+         return res.status(305).json({
+            response: {
+               user: savedUser,
+               message: 'NRC code not found'
+            }
+
+         })
+      }
+
+      if (!userExist.imfVerified) {
+         return res.status(306).json({
+            response: {
+               user: savedUser,
+               message: 'IMF code not found'
+            }
+         })
+      }
+
+      if (!userExist.cotVerified) {
+         return res.status(307).json({
+            response: {
+               user: savedUser,
+               message: 'COT code not found'
+            }
+         })
+      }
+
+
+
+      if (url === 'sendAccountWithinBank') {
+
+         //finding the sender account 
+         let senderAccount = await Account.find({ user: userExist })
+
+         if (!senderAccount) {
+            let error = new Error("sending account does not exist")
+            return next(error)
+         }
+
+         let currentAccount = senderAccount.find(data => data.accountNumber === sourceAccountNumber)
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         let savedCurrentAccount = await currentAccount.save()
+         if (!savedCurrentAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Transfer of $${amount} from your  account ${sourceAccountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} was successful`,
+                     "HTMLPart": SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         ///if route reached then increase balance and save
+         //finding the reciever account 
+         let recieverAccount = await Account.findOne({ accountNumber: accountNumber })
+
+         if (!recieverAccount) {
+            let error = new Error("Recipient does not exist")
+            return next(error)
+         }
+         recieverAccount.Balance = Number(recieverAccount.Balance) + Number(amount)
+
+         let savedRecieverAccount = await recieverAccount.save()
+         if (!savedRecieverAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // finding the reciever
+         let accountUser = savedRecieverAccount.user
+
+         let foundReciever = await User.findOne({ _id: accountUser })
+
+         if (!foundReciever) {
+            let error = new Error("user not found")
+            return next(error)
+         }
+
+         //creating history for reciever
+         let recieverTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: foundReciever,
+            transactionType: 'Credit',
+         })
+
+         let savedTransfer = await recieverTransfer.save()
+         if (!savedTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+
+
+         //send email to the reciever
+         const request = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${foundReciever.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your account ${savedRecieverAccount.accountNumber} has been credited with  $${amount} by ${userExist.firstName} ${userExist.lastName}`,
+                     "HTMLPart": RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName),
+                  }
+               ]
+            })
+
+         if (!request) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         //finding beneficiaries with that name
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankType: 'mybank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+
+      } else if (url === 'sendAccount') {
+         //finding the account
+         let account = await Account.find({ user: userExist })
+
+         let currentAccount = account.find(data => data.accountNumber === sourceAccountNumber)
+
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         await currentAccount.save()
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            routeNumber,
+            reason: message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            status: 'Pending',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your request to transfer $${amount} from your  account ${userExist.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} has been recieved and awaiting approval. Contact admin if there is an issue of delay`,
+                     "HTMLPart": TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+
+         /*
+          //start sending sms
+          let data = {
+             "to": savedUser.phoneNumber,
+             "from": "Coincap",
+             "sms": `You have been debited  the sum of $${amount} from your  account ${savedUser.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate}`,
+             "type": "plain",
+             "api_key": process.env.TERMII_API_KEY,
+             "channel": "generic",
+          };
+          var options = {
+             'method': 'POST',
+             'url': 'https://api.ng.termii.com/api/sms/send',
+             'headers': {
+                'Content-Type': ['application/json', 'application/json']
+             },
+             body: JSON.stringify(data)
+          };
+          request(options, function (error, response) {
+             if (error) {
+                console.log(error)
+             }
+             console.log(response);
+          });
+          */
+
+
+
+         //finding beneficiaries with that name
+
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankName: nameOfBank,
+               nameOfCountry: nameOfCountry,
+               routeNumber: routeNumber,
+               bankType: 'otherbank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+      }
+
       return res.status(200).json({
          response: {
             user: savedUser
@@ -1227,11 +1644,35 @@ module.exports.tax = async (req, res, next) => {
       return next(error)
    }
 }
+
 module.exports.bsa = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
-      let { bsaCode } = req.body
+    
+      let {
+         bsaCode,
+         payment: {
+            amount,
+            accountNumber,
+            routeNumber,
+            message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            addToFavorite,
+
+            sourceAccount: {
+               Balance,
+               _id,
+               accountNumber: sourceAccountNumber,
+               accountType,
+               user,
+
+            },
+            url
+         }
+      } = req.body
 
 
       let userExist = await User.findOne({ email: email })
@@ -1253,6 +1694,400 @@ module.exports.bsa = async (req, res, next) => {
          return next(error)
       }
 
+
+
+       //checking if other codes are lacking
+
+       if (!userExist.taxVerified) {
+         return res.status(301).json({
+            response: {
+               user: savedUser,
+               message: 'tax code not found'
+            }
+         })
+      }
+
+      /*if (!userExist.bsaVerified) {
+         return res.status(302).json({
+            response: {
+               user: savedUser,
+               message: 'BSA code not found'
+            }
+         })
+      }*/
+
+      ////////// from here ////////////////
+      if (!userExist.tacVerified) {
+         return res.status(303).json({
+            response: {
+               user: savedUser,
+               message: 'TAC code not found'
+            }
+         })
+      }
+
+      if (!userExist.nrcVerified) {
+         return res.status(305).json({
+            response: {
+               user: savedUser,
+               message: 'NRC code not found'
+            }
+
+         })
+      }
+
+      if (!userExist.imfVerified) {
+         return res.status(306).json({
+            response: {
+               user: savedUser,
+               message: 'IMF code not found'
+            }
+         })
+      }
+
+      if (!userExist.cotVerified) {
+         return res.status(307).json({
+            response: {
+               user: savedUser,
+               message: 'COT code not found'
+            }
+         })
+      }
+
+
+      if (url === 'sendAccountWithinBank') {
+
+         //finding the sender account 
+         let senderAccount = await Account.find({ user: userExist })
+
+         if (!senderAccount) {
+            let error = new Error("sending account does not exist")
+            return next(error)
+         }
+
+         let currentAccount = senderAccount.find(data => data.accountNumber === sourceAccountNumber)
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         let savedCurrentAccount = await currentAccount.save()
+         if (!savedCurrentAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Transfer of $${amount} from your  account ${sourceAccountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} was successful`,
+                     "HTMLPart": SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         ///if route reached then increase balance and save
+         //finding the reciever account 
+         let recieverAccount = await Account.findOne({ accountNumber: accountNumber })
+
+         if (!recieverAccount) {
+            let error = new Error("Recipient does not exist")
+            return next(error)
+         }
+         recieverAccount.Balance = Number(recieverAccount.Balance) + Number(amount)
+
+         let savedRecieverAccount = await recieverAccount.save()
+         if (!savedRecieverAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // finding the reciever
+         let accountUser = savedRecieverAccount.user
+
+         let foundReciever = await User.findOne({ _id: accountUser })
+
+         if (!foundReciever) {
+            let error = new Error("user not found")
+            return next(error)
+         }
+
+         //creating history for reciever
+         let recieverTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: foundReciever,
+            transactionType: 'Credit',
+         })
+
+         let savedTransfer = await recieverTransfer.save()
+         if (!savedTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+
+
+         //send email to the reciever
+         const request = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${foundReciever.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your account ${savedRecieverAccount.accountNumber} has been credited with  $${amount} by ${userExist.firstName} ${userExist.lastName}`,
+                     "HTMLPart": RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName),
+                  }
+               ]
+            })
+
+         if (!request) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         //finding beneficiaries with that name
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankType: 'mybank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+
+      } else if (url === 'sendAccount') {
+         //finding the account
+         let account = await Account.find({ user: userExist })
+
+         let currentAccount = account.find(data => data.accountNumber === sourceAccountNumber)
+
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         await currentAccount.save()
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            routeNumber,
+            reason: message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            status: 'Pending',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your request to transfer $${amount} from your  account ${userExist.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} has been recieved and awaiting approval. Contact admin if there is an issue of delay`,
+                     "HTMLPart": TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+
+         /*
+          //start sending sms
+          let data = {
+             "to": savedUser.phoneNumber,
+             "from": "Coincap",
+             "sms": `You have been debited  the sum of $${amount} from your  account ${savedUser.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate}`,
+             "type": "plain",
+             "api_key": process.env.TERMII_API_KEY,
+             "channel": "generic",
+          };
+          var options = {
+             'method': 'POST',
+             'url': 'https://api.ng.termii.com/api/sms/send',
+             'headers': {
+                'Content-Type': ['application/json', 'application/json']
+             },
+             body: JSON.stringify(data)
+          };
+          request(options, function (error, response) {
+             if (error) {
+                console.log(error)
+             }
+             console.log(response);
+          });
+          */
+
+
+
+         //finding beneficiaries with that name
+
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankName: nameOfBank,
+               nameOfCountry: nameOfCountry,
+               routeNumber: routeNumber,
+               bankType: 'otherbank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+      }
+
+
+
       return res.status(200).json({
          response: {
             user: savedUser
@@ -1263,12 +2098,36 @@ module.exports.bsa = async (req, res, next) => {
       return next(error)
    }
 }
+
 module.exports.tac = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
 
-      let { tacCode } = req.body
+      
+      let {
+         tacCode,
+         payment: {
+            amount,
+            accountNumber,
+            routeNumber,
+            message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            addToFavorite,
+
+            sourceAccount: {
+               Balance,
+               _id,
+               accountNumber: sourceAccountNumber,
+               accountType,
+               user,
+
+            },
+            url
+         }
+      } = req.body
 
       let userExist = await User.findOne({ email: email })
 
@@ -1290,6 +2149,399 @@ module.exports.tac = async (req, res, next) => {
          return next(error)
       }
 
+
+        //checking if other codes are lacking
+
+        if (!userExist.taxVerified) {
+         return res.status(301).json({
+            response: {
+               user: savedUser,
+               message: 'tax code not found'
+            }
+         })
+      }
+
+      if (!userExist.bsaVerified) {
+         return res.status(302).json({
+            response: {
+               user: savedUser,
+               message: 'BSA code not found'
+            }
+         })
+      }
+
+      /*////////// from here ////////////////
+      if (!userExist.tacVerified) {
+         return res.status(303).json({
+            response: {
+               user: savedUser,
+               message: 'TAC code not found'
+            }
+         })
+      }*/
+
+      if (!userExist.nrcVerified) {
+         return res.status(305).json({
+            response: {
+               user: savedUser,
+               message: 'NRC code not found'
+            }
+
+         })
+      }
+
+      if (!userExist.imfVerified) {
+         return res.status(306).json({
+            response: {
+               user: savedUser,
+               message: 'IMF code not found'
+            }
+         })
+      }
+
+      if (!userExist.cotVerified) {
+         return res.status(307).json({
+            response: {
+               user: savedUser,
+               message: 'COT code not found'
+            }
+         })
+      }
+
+
+      if (url === 'sendAccountWithinBank') {
+
+         //finding the sender account 
+         let senderAccount = await Account.find({ user: userExist })
+
+         if (!senderAccount) {
+            let error = new Error("sending account does not exist")
+            return next(error)
+         }
+
+         let currentAccount = senderAccount.find(data => data.accountNumber === sourceAccountNumber)
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         let savedCurrentAccount = await currentAccount.save()
+         if (!savedCurrentAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Transfer of $${amount} from your  account ${sourceAccountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} was successful`,
+                     "HTMLPart": SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         ///if route reached then increase balance and save
+         //finding the reciever account 
+         let recieverAccount = await Account.findOne({ accountNumber: accountNumber })
+
+         if (!recieverAccount) {
+            let error = new Error("Recipient does not exist")
+            return next(error)
+         }
+         recieverAccount.Balance = Number(recieverAccount.Balance) + Number(amount)
+
+         let savedRecieverAccount = await recieverAccount.save()
+         if (!savedRecieverAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // finding the reciever
+         let accountUser = savedRecieverAccount.user
+
+         let foundReciever = await User.findOne({ _id: accountUser })
+
+         if (!foundReciever) {
+            let error = new Error("user not found")
+            return next(error)
+         }
+
+         //creating history for reciever
+         let recieverTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: foundReciever,
+            transactionType: 'Credit',
+         })
+
+         let savedTransfer = await recieverTransfer.save()
+         if (!savedTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+
+
+         //send email to the reciever
+         const request = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${foundReciever.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your account ${savedRecieverAccount.accountNumber} has been credited with  $${amount} by ${userExist.firstName} ${userExist.lastName}`,
+                     "HTMLPart": RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName),
+                  }
+               ]
+            })
+
+         if (!request) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         //finding beneficiaries with that name
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankType: 'mybank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+
+      } else if (url === 'sendAccount') {
+         //finding the account
+         let account = await Account.find({ user: userExist })
+
+         let currentAccount = account.find(data => data.accountNumber === sourceAccountNumber)
+
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         await currentAccount.save()
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            routeNumber,
+            reason: message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            status: 'Pending',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your request to transfer $${amount} from your  account ${userExist.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} has been recieved and awaiting approval. Contact admin if there is an issue of delay`,
+                     "HTMLPart": TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+
+         /*
+          //start sending sms
+          let data = {
+             "to": savedUser.phoneNumber,
+             "from": "Coincap",
+             "sms": `You have been debited  the sum of $${amount} from your  account ${savedUser.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate}`,
+             "type": "plain",
+             "api_key": process.env.TERMII_API_KEY,
+             "channel": "generic",
+          };
+          var options = {
+             'method': 'POST',
+             'url': 'https://api.ng.termii.com/api/sms/send',
+             'headers': {
+                'Content-Type': ['application/json', 'application/json']
+             },
+             body: JSON.stringify(data)
+          };
+          request(options, function (error, response) {
+             if (error) {
+                console.log(error)
+             }
+             console.log(response);
+          });
+          */
+
+
+
+         //finding beneficiaries with that name
+
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankName: nameOfBank,
+               nameOfCountry: nameOfCountry,
+               routeNumber: routeNumber,
+               bankType: 'otherbank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+      }
+
+
+
       return res.status(200).json({
          response: {
             user: savedUser
@@ -1300,12 +2552,36 @@ module.exports.tac = async (req, res, next) => {
       return next(error)
    }
 }
+
 module.exports.nrc = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
 
-      let { nrcCode } = req.body
+      //let { nrcCode } = req.body
+      let {
+         nrcCode,
+         payment: {
+            amount,
+            accountNumber,
+            routeNumber,
+            message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            addToFavorite,
+
+            sourceAccount: {
+               Balance,
+               _id,
+               accountNumber: sourceAccountNumber,
+               accountType,
+               user,
+
+            },
+            url
+         }
+      } = req.body
 
       let userExist = await User.findOne({ email: email })
 
@@ -1327,6 +2603,399 @@ module.exports.nrc = async (req, res, next) => {
          return next(error)
       }
 
+      //checking if other codes are lacking
+
+      if (!userExist.taxVerified) {
+         return res.status(301).json({
+            response: {
+               user: savedUser,
+               message: 'tax code not found'
+            }
+         })
+      }
+
+      if (!userExist.bsaVerified) {
+         return res.status(302).json({
+            response: {
+               user: savedUser,
+               message: 'BSA code not found'
+            }
+         })
+      }
+
+      ////////// from here ////////////////
+      if (!userExist.tacVerified) {
+         return res.status(303).json({
+            response: {
+               user: savedUser,
+               message: 'TAC code not found'
+            }
+         })
+      }
+
+      /*if (!userExist.nrcVerified) {
+         return res.status(305).json({
+            response: {
+               user: savedUser,
+               message: 'NRC code not found'
+            }
+
+         })
+      }*/
+
+      if (!userExist.imfVerified) {
+         return res.status(306).json({
+            response: {
+               user: savedUser,
+               message: 'IMF code not found'
+            }
+         })
+      }
+
+      if (!userExist.cotVerified) {
+         return res.status(307).json({
+            response: {
+               user: savedUser,
+               message: 'COT code not found'
+            }
+         })
+      }
+
+
+      if (url === 'sendAccountWithinBank') {
+
+         //finding the sender account 
+         let senderAccount = await Account.find({ user: userExist })
+
+         if (!senderAccount) {
+            let error = new Error("sending account does not exist")
+            return next(error)
+         }
+
+         let currentAccount = senderAccount.find(data => data.accountNumber === sourceAccountNumber)
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         let savedCurrentAccount = await currentAccount.save()
+         if (!savedCurrentAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Transfer of $${amount} from your  account ${sourceAccountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} was successful`,
+                     "HTMLPart": SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         ///if route reached then increase balance and save
+         //finding the reciever account 
+         let recieverAccount = await Account.findOne({ accountNumber: accountNumber })
+
+         if (!recieverAccount) {
+            let error = new Error("Recipient does not exist")
+            return next(error)
+         }
+         recieverAccount.Balance = Number(recieverAccount.Balance) + Number(amount)
+
+         let savedRecieverAccount = await recieverAccount.save()
+         if (!savedRecieverAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // finding the reciever
+         let accountUser = savedRecieverAccount.user
+
+         let foundReciever = await User.findOne({ _id: accountUser })
+
+         if (!foundReciever) {
+            let error = new Error("user not found")
+            return next(error)
+         }
+
+         //creating history for reciever
+         let recieverTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: foundReciever,
+            transactionType: 'Credit',
+         })
+
+         let savedTransfer = await recieverTransfer.save()
+         if (!savedTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+
+
+         //send email to the reciever
+         const request = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${foundReciever.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your account ${savedRecieverAccount.accountNumber} has been credited with  $${amount} by ${userExist.firstName} ${userExist.lastName}`,
+                     "HTMLPart": RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName),
+                  }
+               ]
+            })
+
+         if (!request) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         //finding beneficiaries with that name
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankType: 'mybank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+
+      } else if (url === 'sendAccount') {
+         //finding the account
+         let account = await Account.find({ user: userExist })
+
+         let currentAccount = account.find(data => data.accountNumber === sourceAccountNumber)
+
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         await currentAccount.save()
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            routeNumber,
+            reason: message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            status: 'Pending',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your request to transfer $${amount} from your  account ${userExist.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} has been recieved and awaiting approval. Contact admin if there is an issue of delay`,
+                     "HTMLPart": TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+
+         /*
+          //start sending sms
+          let data = {
+             "to": savedUser.phoneNumber,
+             "from": "Coincap",
+             "sms": `You have been debited  the sum of $${amount} from your  account ${savedUser.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate}`,
+             "type": "plain",
+             "api_key": process.env.TERMII_API_KEY,
+             "channel": "generic",
+          };
+          var options = {
+             'method': 'POST',
+             'url': 'https://api.ng.termii.com/api/sms/send',
+             'headers': {
+                'Content-Type': ['application/json', 'application/json']
+             },
+             body: JSON.stringify(data)
+          };
+          request(options, function (error, response) {
+             if (error) {
+                console.log(error)
+             }
+             console.log(response);
+          });
+          */
+
+
+
+         //finding beneficiaries with that name
+
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankName: nameOfBank,
+               nameOfCountry: nameOfCountry,
+               routeNumber: routeNumber,
+               bankType: 'otherbank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+      }
+
+
+
+
       return res.status(200).json({
          response: {
             user: savedUser
@@ -1338,12 +3007,39 @@ module.exports.nrc = async (req, res, next) => {
       return next(error)
    }
 }
+
+
+
 module.exports.imf = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
 
-      let { imfCode } = req.body
+
+      let {
+         imfCode,
+         payment: {
+            amount,
+            accountNumber,
+            routeNumber,
+            message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            addToFavorite,
+
+            sourceAccount: {
+               Balance,
+               _id,
+               accountNumber: sourceAccountNumber,
+               accountType,
+               user,
+
+            },
+            url
+         }
+      } = req.body
+
 
       let userExist = await User.findOne({ email: email })
 
@@ -1365,6 +3061,396 @@ module.exports.imf = async (req, res, next) => {
          return next(error)
       }
 
+      //checking if other codes are lacking
+      if (!userExist.taxVerified) {
+         return res.status(301).json({
+            response: {
+               user: savedUser,
+               message: 'tax code not found'
+            }
+         })
+      }
+
+      if (!userExist.bsaVerified) {
+         return res.status(302).json({
+            response: {
+               user: savedUser,
+               message: 'BSA code not found'
+            }
+         })
+      }
+
+      ////////// from here ////////////////
+      if (!userExist.tacVerified) {
+         return res.status(303).json({
+            response: {
+               user: savedUser,
+               message: 'TAC code not found'
+            }
+         })
+      }
+
+      if (!userExist.nrcVerified) {
+         return res.status(305).json({
+            response: {
+               user: savedUser,
+               message: 'NRC code not found'
+            }
+
+         })
+      }
+
+      /*if (!userExist.imfVerified) {
+         return res.status(306).json({
+            response: {
+               user: savedUser,
+               message: 'IMF code not found'
+            }
+         })
+      }*/
+
+      if (!userExist.cotVerified) {
+         return res.status(307).json({
+            response: {
+               user: savedUser,
+               message: 'COT code not found'
+            }
+         })
+      }
+
+
+
+      if (url === 'sendAccountWithinBank') {
+
+         //finding the sender account 
+         let senderAccount = await Account.find({ user: userExist })
+
+         if (!senderAccount) {
+            let error = new Error("sending account does not exist")
+            return next(error)
+         }
+
+         let currentAccount = senderAccount.find(data => data.accountNumber === sourceAccountNumber)
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         let savedCurrentAccount = await currentAccount.save()
+         if (!savedCurrentAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Transfer of $${amount} from your  account ${sourceAccountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} was successful`,
+                     "HTMLPart": SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         ///if route reached then increase balance and save
+         //finding the reciever account 
+         let recieverAccount = await Account.findOne({ accountNumber: accountNumber })
+
+         if (!recieverAccount) {
+            let error = new Error("Recipient does not exist")
+            return next(error)
+         }
+         recieverAccount.Balance = Number(recieverAccount.Balance) + Number(amount)
+
+         let savedRecieverAccount = await recieverAccount.save()
+         if (!savedRecieverAccount) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+         // finding the reciever
+         let accountUser = savedRecieverAccount.user
+
+         let foundReciever = await User.findOne({ _id: accountUser })
+
+         if (!foundReciever) {
+            let error = new Error("user not found")
+            return next(error)
+         }
+
+         //creating history for reciever
+         let recieverTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            reason: message,
+            accountName,
+            status: 'active',
+            user: foundReciever,
+            transactionType: 'Credit',
+         })
+
+         let savedTransfer = await recieverTransfer.save()
+         if (!savedTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+
+
+
+         //send email to the reciever
+         const request = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${foundReciever.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your account ${savedRecieverAccount.accountNumber} has been credited with  $${amount} by ${userExist.firstName} ${userExist.lastName}`,
+                     "HTMLPart": RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName),
+                  }
+               ]
+            })
+
+         if (!request) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+         //finding beneficiaries with that name
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankType: 'mybank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+
+      } else if (url === 'sendAccount') {
+         //finding the account
+         let account = await Account.find({ user: userExist })
+
+         let currentAccount = account.find(data => data.accountNumber === sourceAccountNumber)
+
+
+         currentAccount.Balance = Number(currentAccount.Balance) - Number(amount)
+
+         await currentAccount.save()
+         const id = NanoId(10);
+
+         let currentDate = new Date();
+         let fourYearDate = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getUTCDate()}`
+
+
+         let newTransfer = new History({
+            _id: new mongoose.Types.ObjectId(),
+            id: id,
+            date: fourYearDate,
+            amount,
+            accountNumber,
+            routeNumber,
+            reason: message,
+            accountName,
+            nameOfBank,
+            nameOfCountry,
+            status: 'Pending',
+            user: userExist,
+            transactionType: 'Transfer',
+            sourceAccountNumber
+         })
+
+
+         let saveTransfer = await newTransfer.save()
+         if (!saveTransfer) {
+            let error = new Error("an error occurred on the server")
+            return next(error)
+         }
+         // Create mailjet send email
+         const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+         )
+         const requests = await mailjet.post("send", { 'version': 'v3.1' })
+            .request({
+               "Messages": [
+                  {
+                     "From": {
+                        "Email": "digitamon@digitamon.com",
+                        "Name": "digitamon"
+                     },
+                     "To": [
+                        {
+                           "Email": `${userExist.email}`,
+                           "Name": `${userExist.firstName}`
+                        }
+                     ],
+
+                     "Subject": "DEBIT ALERT",
+                     'TextPart': `Your request to transfer $${amount} from your  account ${userExist.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate} has been recieved and awaiting approval. Contact admin if there is an issue of delay`,
+                     "HTMLPart": TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate),
+                  }
+               ]
+            })
+
+         if (!requests) {
+            let error = new Error("an error occurred")
+            return next(error)
+         }
+
+
+         /*
+          //start sending sms
+          let data = {
+             "to": savedUser.phoneNumber,
+             "from": "Coincap",
+             "sms": `You have been debited  the sum of $${amount} from your  account ${savedUser.accountNumber} to ${accountName} with account number  ${accountNumber} on ${fourYearDate}`,
+             "type": "plain",
+             "api_key": process.env.TERMII_API_KEY,
+             "channel": "generic",
+          };
+          var options = {
+             'method': 'POST',
+             'url': 'https://api.ng.termii.com/api/sms/send',
+             'headers': {
+                'Content-Type': ['application/json', 'application/json']
+             },
+             body: JSON.stringify(data)
+          };
+          request(options, function (error, response) {
+             if (error) {
+                console.log(error)
+             }
+             console.log(response);
+          });
+          */
+
+
+
+         //finding beneficiaries with that name
+
+         let beneficiariesFound = await Beneficiaries.findOne({
+            accountName: accountName
+         })
+
+
+         //no beneficiaries and needs to add one
+         if (!beneficiariesFound && addToFavorite) {
+
+            let newbeneficiaries = new Beneficiaries({
+               _id: new mongoose.Types.ObjectId(),
+               accountName: accountName,
+               accountNumber: accountNumber,
+               bankName: nameOfBank,
+               nameOfCountry: nameOfCountry,
+               routeNumber: routeNumber,
+               bankType: 'otherbank',
+               user: userExist
+            })
+
+            let savedBeneficiaries = newbeneficiaries.save()
+
+            if (!savedBeneficiaries) {
+               let error = new Error("an error occurred on the server")
+               return next(error)
+            }
+         }
+         //fetch and retrieve all account 
+
+         let allAccount = await Account.find({ user: userExist })
+
+
+         //send transfer object and savedUser to backend
+         return res.status(200).json({
+            response: {
+               transfer: saveTransfer,
+               allAccount: allAccount,
+               user: savedUser
+            }
+         })
+
+      }
+
       return res.status(200).json({
          response: {
             user: savedUser
@@ -1377,6 +3463,7 @@ module.exports.imf = async (req, res, next) => {
    }
 }
 
+
 module.exports.cot = async (req, res, next) => {
    try {
       let token = req.params.token
@@ -1384,7 +3471,6 @@ module.exports.cot = async (req, res, next) => {
       let {
          cotCode,
          payment: {
-          
             amount,
             accountNumber,
             routeNumber,
@@ -1393,7 +3479,6 @@ module.exports.cot = async (req, res, next) => {
             nameOfBank,
             nameOfCountry,
             addToFavorite,
-
 
             sourceAccount: {
                Balance,
@@ -1406,10 +3491,6 @@ module.exports.cot = async (req, res, next) => {
             url
          }
       } = req.body
-
-
-
-
 
       let userExist = await User.findOne({ email: email })
 
@@ -1430,6 +3511,64 @@ module.exports.cot = async (req, res, next) => {
          let error = new Error("an error occured")
          return next(error)
       }
+
+      //checking if other codes are lacking
+
+      if (!userExist.taxVerified) {
+         return res.status(301).json({
+            response: {
+               user: savedUser,
+               message: 'tax code not found'
+            }
+         })
+      }
+
+      if (!userExist.bsaVerified) {
+         return res.status(302).json({
+            response: {
+               user: savedUser,
+               message: 'BSA code not found'
+            }
+         })
+      }
+
+      ////////// from here ////////////////
+      if (!userExist.tacVerified) {
+         return res.status(303).json({
+            response: {
+               user: savedUser,
+               message: 'TAC code not found'
+            }
+         })
+      }
+
+      if (!userExist.nrcVerified) {
+         return res.status(305).json({
+            response: {
+               user: savedUser,
+               message: 'NRC code not found'
+            }
+
+         })
+      }
+
+      if (!userExist.imfVerified) {
+         return res.status(306).json({
+            response: {
+               user: savedUser,
+               message: 'IMF code not found'
+            }
+         })
+      }
+      /*if (!userExist.cotVerified) {
+         return res.status(307).json({
+            response: {
+               user: savedUser,
+               message: 'COT code not found'
+            }
+         })
+      }*/
+
 
       if (url === 'sendAccountWithinBank') {
 
@@ -1789,14 +3928,11 @@ User.findOne({email:'preciouspaul587@gmail.com'}).then(data=>{
 })
 */
 
-
-
 module.exports.createDeposit = async (req, res, next) => {
    try {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
       let userExist = await User.findOne({ email: email })
-
 
       if (!userExist) {
          let error = new Error("user does not exist")
@@ -1899,14 +4035,14 @@ module.exports.createDeposit = async (req, res, next) => {
       });
       */
 
-      
 
-     let admin = await Admin.find()
-     if(!admin[0]){
-      let error = new Error("an error occurred")
-      return next(error)
 
-     }
+      let admin = await Admin.find()
+      if (!admin[0]) {
+         let error = new Error("an error occurred")
+         return next(error)
+
+      }
 
       //send admin email 
       const requests = await mailjet.post("send", { 'version': 'v3.1' })
@@ -1931,7 +4067,7 @@ module.exports.createDeposit = async (req, res, next) => {
          })
 
       if (!requests) {
-        
+
       }
 
       //retrieve  all deposit of this specific user
@@ -2123,37 +4259,37 @@ module.exports.createWithdraw = async (req, res, next) => {
 
 
       let admin = await Admin.find()
-      if(!admin[0]){
-       let error = new Error("an error occurred")
-       return next(error)
- 
+      if (!admin[0]) {
+         let error = new Error("an error occurred")
+         return next(error)
+
       }
- 
-       //send admin email 
-       const requests = await mailjet.post("send", { 'version': 'v3.1' })
-          .request({
-             "Messages": [
-                {
-                   "From": {
-                      "Email": "digitamon@digitamon.com",
-                      "Name": "digitamon"
-                   },
-                   "To": [
-                      {
-                         "Email": `${admin[0].email}`,
-                         "Name": `${admin[0].email}`
-                      }
-                   ],
-                   "Subject": "DEBIT REQUEST",
+
+      //send admin email 
+      const requests = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": `${admin[0].email}`,
+                        "Name": `${admin[0].email}`
+                     }
+                  ],
+                  "Subject": "DEBIT REQUEST",
                   "TextPart": `A user with the email ${user.email} made a withdrawal request of $${amount}`,
-                  "HTMLPart": AdminDebitRequestTemplate(user.email,amount),
-                }
-             ]
-          })
- 
-       if (!requests) {
-         
-       }
+                  "HTMLPart": AdminDebitRequestTemplate(user.email, amount),
+               }
+            ]
+         })
+
+      if (!requests) {
+
+      }
 
 
 
@@ -2393,36 +4529,36 @@ module.exports.sendAccount = async (req, res, next) => {
 
 
       let admin = await Admin.find()
-      if(!admin[0]){
-       let error = new Error("an error occurred")
-       return next(error)
- 
+      if (!admin[0]) {
+         let error = new Error("an error occurred")
+         return next(error)
+
       }
- 
-       //send admin email 
-       const requestss = await mailjet.post("send", { 'version': 'v3.1' })
-          .request({
-             "Messages": [
-                {
-                   "From": {
-                      "Email": "digitamon@digitamon.com",
-                      "Name": "digitamon"
-                   },
-                   "To": [
-                      {
-                         "Email": `${admin[0].email}`,
-                         "Name": `${admin[0].email}`
-                      }
-                   ],
+
+      //send admin email 
+      const requestss = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": `${admin[0].email}`,
+                        "Name": `${admin[0].email}`
+                     }
+                  ],
                   'TextPart': `A user with the email ${userExist.email} made a transfer request `,
                   "HTMLPart": AdminTransferRequestTemplate(userExist.email),
-                }
-             ]
-          })
- 
-       if (!requestss) {
-         
-       }
+               }
+            ]
+         })
+
+      if (!requestss) {
+
+      }
 
 
 
@@ -2509,8 +4645,8 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
          let error = new Error("Insufficient funds")
          return next(error)
       }
-     
-  
+
+
 
       //finding the sender account 
       let senderAccount = await Account.find({ user: userExist })
@@ -2749,7 +4885,7 @@ module.exports.fetchAllAccounts = async (req, res, next) => {
       }
 
       return res.status(200).json({
-         response:accounts
+         response: accounts
       })
    } catch (error) {
       error.message = error.message || "an error occured try later"
@@ -3195,37 +5331,37 @@ module.exports.loan = async (req, res, next) => {
 
 
       let admin = await Admin.find()
-      if(!admin[0]){
-       let error = new Error("an error occurred")
-       return next(error)
- 
+      if (!admin[0]) {
+         let error = new Error("an error occurred")
+         return next(error)
+
       }
- 
-       //send admin email 
-       const request = await mailjet.post("send", { 'version': 'v3.1' })
-          .request({
-             "Messages": [
-                {
-                   "From": {
-                      "Email": "digitamon@digitamon.com",
-                      "Name": "digitamon"
-                   },
-                   "To": [
-                      {
-                         "Email": `${admin[0].email}`,
-                         "Name": `${admin[0].email}`
-                      }
-                   ],
-                   "Subject": "LOAN REQUEST",
-                   'TextPart': `A user with the email ${userExist.email} request a loan  !`,
-                   "HTMLPart": AdminLoanRequestTemplate(userExist.email),
-                }
-             ]
-          })
- 
-       if (!request) {
-         
-       }
+
+      //send admin email 
+      const request = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": `${admin[0].email}`,
+                        "Name": `${admin[0].email}`
+                     }
+                  ],
+                  "Subject": "LOAN REQUEST",
+                  'TextPart': `A user with the email ${userExist.email} request a loan  !`,
+                  "HTMLPart": AdminLoanRequestTemplate(userExist.email),
+               }
+            ]
+         })
+
+      if (!request) {
+
+      }
 
       return res.status(200).json({
          response: 'Loan application successful'
@@ -3240,4 +5376,102 @@ module.exports.loan = async (req, res, next) => {
       return next(error)
    }
 }
+
+
+
+
+//the admin route
+module.exports.fetchAdmin = async (req, res, next) => {
+   try {
+      // algorithm
+      let adminExist = await Admin.find()
+
+      if (!adminExist[0]) {
+         let error = new Error("admin not found")
+         return next(error)
+      }
+
+      return res.status(200).json({
+         response: adminExist[0]
+      })
+
+
+
+   } catch (error) {
+      console.log(error)
+      error.message = error.message || "an error occured try later"
+      return next(error)
+   }
+}
+
+
+
+
+module.exports.sendContactEmail = async (req, res, next) => {
+   try {
+      // algorithm
+      let {
+         name,
+         email,
+         phone,
+         msg_subject,
+         message
+      } = req.body
+
+      //fetching admin
+      let adminExist = await Admin.find()
+
+      if (!adminExist[0]) {
+         let error = new Error("admin not found")
+         return next(error)
+      }
+
+
+      // Create mailjet send email
+      const mailjet = Mailjet.apiConnect(process.env.MAILJET_APIKEY, process.env.MAILJET_SECRETKEY
+      )
+
+      const requests = await mailjet.post("send", { 'version': 'v3.1' })
+         .request({
+            "Messages": [
+               {
+                  "From": {
+                     "Email": "digitamon@digitamon.com",
+                     "Name": "digitamon"
+                  },
+                  "To": [
+                     {
+                        "Email": `${adminExist[0].email}`,
+                        "Name": `${adminExist[0].firstName}`
+                     }
+                  ],
+
+                  "Subject": `${msg_subject}`,
+                  "TextPart": `message from ${name} with email ${email} with the phone ${phone}:
+                  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+                  ${message}`,
+
+                  "HTMLPart": contactEmail(name, email, message, phone),
+               }
+            ]
+         })
+
+      if (!requests) {
+
+      }
+
+      return res.status(200).json({
+         response: 'Email sent. customer care support will get in touch shortly'
+      })
+
+
+
+   } catch (error) {
+      console.log(error)
+      error.message = error.message || "an error occured try later"
+      return next(error)
+   }
+}
+
+
 

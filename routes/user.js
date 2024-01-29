@@ -1,6 +1,6 @@
 const express = require("express")
 const router = express.Router()
-const { verifyEmail, sendRecoverEmail, checkrecovertokenvalidity, changepassword, hasCard, createCard, deleteCard, createDeposit, createWithdraw, bsa,tax, sendAccount, transfersToAccount, sendOtp, checkOtp,beneficiaries, createBeneficiaries, deleteBeneficiaries, getNotifications, deleteNotification, sendAccountWithinBank, tac, nrc, imf, cot, fetchAllAccounts } = require("../controller/user")
+const { verifyEmail, sendRecoverEmail, checkrecovertokenvalidity, changepassword, hasCard, createCard, deleteCard, createDeposit, createWithdraw, bsa,tax, sendAccount, transfersToAccount, sendOtp, checkOtp,beneficiaries, createBeneficiaries, deleteBeneficiaries, getNotifications, deleteNotification, sendAccountWithinBank, tac, nrc, imf, cot, fetchAllAccounts, fetchAdmin, sendContactEmail } = require("../controller/user")
 
 
 
@@ -60,6 +60,12 @@ router.get('/notifications/:token',getNotifications)
 router.delete('/notifications/:token/:id',deleteNotification)
 router.delete('/accounts/:token',deleteNotification)
 router.post('/loan/:token',loan)
+
+
+/// unprotected route
+router.get('/admin',fetchAdmin)
+router.post('/contact',sendContactEmail)
+
 
 
 
